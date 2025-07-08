@@ -103,7 +103,7 @@ void room_control_update(room_control_t *room) {
 | `room_control_update_fan()`     | Controla velocidad del ventilador por PWM |
 | `room_control_update_display()` | Actualiza interfaz visual (pantalla OLED) |
 
-###Manejo de entrada de teclado en funcion del estado del sistema. (Interaccion con el dispositivo)
+### Manejo de entrada de teclado en funcion del estado del sistema. (Interaccion con el dispositivo)
 ```c
 void room_control_process_key(room_control_t *room, char key) {
     room->last_input_time = HAL_GetTick();
@@ -154,7 +154,7 @@ void room_control_process_key(room_control_t *room, char key) {
 | `UNLOCKED`       | Tecla `'*'`                | Vuelve a `LOCKED`                     |
 | Otro estado      | Cualquier tecla            | Se ignora                             |
 
-###Actualizar la temperatura actual de la habitacion y ajustar el nivel del ventilador
+### Actualizar la temperatura actual de la habitacion y ajustar el nivel del ventilador
 ```c
 void room_control_set_temperature(room_control_t *room, float temperature) {
     room->current_temperature = temperature;
@@ -198,7 +198,7 @@ void room_control_set_temperature(room_control_t *room, float temperature) {
 | 3    | Posicionar cursor para los asteriscos    | `ssd1306_SetCursor(10, 25)`          | Cursor baja a una nueva línea para mostrar la entrada           |
 | 4    | Mostrar un `*` por cada dígito ingresado | Bucle con `ssd1306_WriteString("*")` | Reemplaza cada número ingresado por un asterisco en pantalla    |
 
-###Mostrar la contraseña en nuevo formato (****)
+### Mostrar la contraseña en nuevo formato (****)
 ```c
         case ROOM_STATE_INPUT_PASSWORD:
             ssd1306_SetCursor(10, 10);
@@ -218,7 +218,7 @@ void room_control_set_temperature(room_control_t *room, float temperature) {
 | 3    | Posicionar cursor para los asteriscos    | `ssd1306_SetCursor(10, 25)`          | Cursor baja a una nueva línea para mostrar la entrada           |
 | 4    | Mostrar un `*` por cada dígito ingresado | Bucle con `ssd1306_WriteString("*")` | Reemplaza cada número ingresado por un asterisco en pantalla    |
 
-###Control automatico con PWM del ventilador en funcion de la temperatura.
+### Control automatico con PWM del ventilador en funcion de la temperatura.
 ```c
 static void room_control_update_fan(room_control_t *room) {
     // Control PWM del ventilador según el nivel
@@ -253,7 +253,7 @@ static void room_control_update_fan(room_control_t *room) {
 | 4    | Actualizar señal PWM al ventilador | `__HAL_TIM_SET_COMPARE(...)` | Se aplica el valor PWM al canal correspondiente del timer (TIM3\_CH1) |
 
 ## main.c
-###Inicializacion de funciones
+### Inicializacion de funciones
 ADC1, pin analogico para el sensor, en este caso un potenciometro
 ```c
 static void MX_ADC1_Init(void);
@@ -266,7 +266,7 @@ PWM, generar señal
 ```c
 HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 ```
-###Leer teclado y actualizar las maquina de estado:
+### Leer teclado y actualizar las maquina de estado:
 ```c
     room_control_update(&room_system);
         // Procesa teclas del keypad
@@ -288,7 +288,7 @@ HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 | `room_control_process_key(&room_system, key);` | Procesa la tecla en el contexto del estado actual (ej. clave, comandos) |
 | `keypad_interrupt_pin = 0;`                    | Limpia el pin de interrupción para permitir nuevas entradas             |
 
-###Leer el sensor a traves de ADC y actualizar logica del sistema
+### Leer el sensor a traves de ADC y actualizar logica del sistema
 ```c
     HAL_ADC_Start(&hadc1);
     if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {
