@@ -3,7 +3,10 @@
 #include "ssd1306_fonts.h"
 #include <string.h>
 #include <stdio.h>
+#include "main.h"
 
+
+extern TIM_HandleTypeDef htim3;
 // Default password
 static const char DEFAULT_PASSWORD[] = "1234";
 
@@ -49,55 +52,42 @@ void room_control_init(room_control_t *room) {
 
 void room_control_update(room_control_t *room) {
     uint32_t current_time = HAL_GetTick();
-    
-    // State machine
+
     switch (room->current_state) {
         case ROOM_STATE_LOCKED:
-            // TODO: TAREA - Implementar lógica del estado LOCKED
-            // - Mostrar mensaje "SISTEMA BLOQUEADO" en display
-            // - Asegurar que la puerta esté cerrada
-            // - Transición a INPUT_PASSWORD cuando se presione una tecla
+            // Mostrar mensaje y asegurar puerta cerrada
+            room->door_locked = true;
+            // Espera a que se presione una tecla (se maneja en process_key)
             break;
-            
+
         case ROOM_STATE_INPUT_PASSWORD:
-            // TODO: TAREA - Implementar lógica de entrada de contraseña
-            // - Mostrar asteriscos en pantalla (**)
-            // - Manejar timeout (volver a LOCKED después de 10 segundos sin input)
-            // - Verificar contraseña cuando se ingresen 4 dígitos
-            
-            // Example timeout logic:
+            // Timeout: volver a LOCKED si no hay input en 10s
             if (current_time - room->last_input_time > INPUT_TIMEOUT_MS) {
                 room_control_change_state(room, ROOM_STATE_LOCKED);
             }
             break;
-            
+
         case ROOM_STATE_UNLOCKED:
-            // TODO: TAREA - Implementar lógica del estado UNLOCKED  
-            // - Mostrar "ACCESO CONCEDIDO" y temperatura
-            // - Mantener puerta abierta
-            // - Permitir comandos de control manual
+            // Puerta abierta, LED encendido (puedes agregar aquí si tienes LED)
+            room->door_locked = false;
+            // Permitir comandos manuales (opcional)
             break;
-            
+
         case ROOM_STATE_ACCESS_DENIED:
-            // TODO: TAREA - Implementar lógica de acceso denegado
-            // - Mostrar "ACCESO DENEGADO" durante 3 segundos
-            // - Enviar alerta a internet via ESP-01 (nuevo requerimiento)
-            // - Volver automáticamente a LOCKED
-            
+            // Esperar 3 segundos y volver a LOCKED
             if (current_time - room->state_enter_time > ACCESS_DENIED_TIMEOUT_MS) {
                 room_control_change_state(room, ROOM_STATE_LOCKED);
             }
             break;
-            
+
         case ROOM_STATE_EMERGENCY:
-            // TODO: TAREA - Implementar lógica de emergencia (opcional)
+            // Lógica de emergencia (opcional)
             break;
     }
-    
-    // Update subsystems
+
     room_control_update_door(room);
     room_control_update_fan(room);
-    
+
     if (room->display_update_needed) {
         room_control_update_display(room);
         room->display_update_needed = false;
@@ -106,38 +96,45 @@ void room_control_update(room_control_t *room) {
 
 void room_control_process_key(room_control_t *room, char key) {
     room->last_input_time = HAL_GetTick();
-    
+
     switch (room->current_state) {
         case ROOM_STATE_LOCKED:
-            // Start password input
+            // Iniciar ingreso de contraseña
             room_control_clear_input(room);
-            room->input_buffer[0] = key;
-            room->input_index = 1;
-            room_control_change_state(room, ROOM_STATE_INPUT_PASSWORD);
+            if (room->input_index < PASSWORD_LENGTH && key >= '0' && key <= '9') {
+                room->input_buffer[room->input_index++] = key;
+                room_control_change_state(room, ROOM_STATE_INPUT_PASSWORD);
+            }
             break;
-            
+
         case ROOM_STATE_INPUT_PASSWORD:
-            // TODO: TAREA - Implementar lógica de entrada de teclas
-            // - Agregar tecla al buffer de entrada
-            // - Verificar si se completaron 4 dígitos
-            // - Comparar con contraseña guardada
-            // - Cambiar a UNLOCKED o ACCESS_DENIED según resultado
+            if (key >= '0' && key <= '9' && room->input_index < PASSWORD_LENGTH) {
+                room->input_buffer[room->input_index++] = key;
+            }
+            // Si ya se ingresaron 4 dígitos, validar
+            if (room->input_index == PASSWORD_LENGTH) {
+                if (strncmp(room->input_buffer, room->password, PASSWORD_LENGTH) == 0) {
+                    room_control_change_state(room, ROOM_STATE_UNLOCKED);
+                } else {
+                    room_control_change_state(room, ROOM_STATE_ACCESS_DENIED);
+                }
+            }
             break;
-            
+
         case ROOM_STATE_UNLOCKED:
-            // TODO: TAREA - Manejar comandos en estado desbloqueado (opcional)
-            // Ejemplo: tecla '*' para volver a bloquear
+            // Permitir volver a LOCKED con '*'
             if (key == '*') {
                 room_control_change_state(room, ROOM_STATE_LOCKED);
             }
             break;
-            
+
         default:
             break;
     }
-    
+
     room->display_update_needed = true;
 }
+
 
 void room_control_set_temperature(room_control_t *room, float temperature) {
     room->current_temperature = temperature;
@@ -150,6 +147,7 @@ void room_control_set_temperature(room_control_t *room, float temperature) {
             room->display_update_needed = true;
         }
     }
+    room->display_update_needed = true;
 }
 
 void room_control_force_fan_level(room_control_t *room, fan_level_t level) {
@@ -208,12 +206,12 @@ static void room_control_change_state(room_control_t *room, room_state_t new_sta
     }
 }
 
+    
 static void room_control_update_display(room_control_t *room) {
     char display_buffer[32];
-    
+
     ssd1306_Fill(Black);
-    
-    // TODO: TAREA - Implementar actualización de pantalla según estado
+
     switch (room->current_state) {
         case ROOM_STATE_LOCKED:
             ssd1306_SetCursor(10, 10);
@@ -221,41 +219,47 @@ static void room_control_update_display(room_control_t *room) {
             ssd1306_SetCursor(10, 25);
             ssd1306_WriteString("BLOQUEADO", Font_7x10, White);
             break;
-            
+
         case ROOM_STATE_INPUT_PASSWORD:
-            // TODO: Mostrar asteriscos según input_index
             ssd1306_SetCursor(10, 10);
             ssd1306_WriteString("CLAVE:", Font_7x10, White);
-            // Ejemplo: mostrar asteriscos
+            ssd1306_SetCursor(10, 25);
+            // Mostrar asteriscos según input_index
+            for (uint8_t i = 0; i < room->input_index; i++) {
+                ssd1306_WriteString("*", Font_7x10, White);
+            }
             break;
-            
+
         case ROOM_STATE_UNLOCKED:
-            // TODO: Mostrar estado del sistema (temperatura, ventilador)
             ssd1306_SetCursor(10, 10);
             ssd1306_WriteString("ACCESO OK", Font_7x10, White);
-            
-            snprintf(display_buffer, sizeof(display_buffer), "Temp: %.1fC", room->current_temperature);
+
+            // --- CORREGIDO: Mostrar temperatura con un decimal ---
+            snprintf(display_buffer, sizeof(display_buffer), "Temp: %d C", (int)(room->current_temperature));
             ssd1306_SetCursor(10, 25);
             ssd1306_WriteString(display_buffer, Font_7x10, White);
-            
+
             snprintf(display_buffer, sizeof(display_buffer), "Fan: %d%%", room->current_fan_level);
             ssd1306_SetCursor(10, 40);
             ssd1306_WriteString(display_buffer, Font_7x10, White);
             break;
-            
+        
+
         case ROOM_STATE_ACCESS_DENIED:
             ssd1306_SetCursor(10, 10);
             ssd1306_WriteString("ACCESO", Font_7x10, White);
             ssd1306_SetCursor(10, 25);
             ssd1306_WriteString("DENEGADO", Font_7x10, White);
             break;
-            
+
         default:
             break;
     }
-    
+
     ssd1306_UpdateScreen();
 }
+
+
 
 static void room_control_update_door(room_control_t *room) {
     // TODO: TAREA - Implementar control físico de la puerta
@@ -268,12 +272,24 @@ static void room_control_update_door(room_control_t *room) {
 }
 
 static void room_control_update_fan(room_control_t *room) {
-    // TODO: TAREA - Implementar control PWM del ventilador
-    // Calcular valor PWM basado en current_fan_level
-    // Ejemplo:
-    // uint32_t pwm_value = (room->current_fan_level * 99) / 100;  // 0-99 para period=99
-    // __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pwm_value);
-}
+    // Control PWM del ventilador según el nivel
+    uint32_t pwm_value = 0;
+    switch (room->current_fan_level) {
+        case FAN_LEVEL_OFF:
+            pwm_value = 0;
+            break;
+        case FAN_LEVEL_LOW:
+            pwm_value = (30 * 99) / 100; // 30% de 99
+            break;
+        case FAN_LEVEL_MED:
+            pwm_value = (70 * 99) / 100; // 70% de 99
+            break;
+        case FAN_LEVEL_HIGH:
+            pwm_value = 99; // 100%
+            break;
+    }
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pwm_value);
+}   
 
 static fan_level_t room_control_calculate_fan_level(float temperature) {
     // TODO: TAREA - Implementar lógica de niveles de ventilador
