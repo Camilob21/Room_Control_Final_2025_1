@@ -258,7 +258,7 @@ ADC1, pin analogico para el sensor, en este caso un potenciometro
 ```c
 static void MX_ADC1_Init(void);
 ```
-Sistema de3 control de habitacion:
+Sistema de control de habitacion:
 ```c
 room_control_init(&room_system);
 ```
