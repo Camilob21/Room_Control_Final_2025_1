@@ -50,8 +50,207 @@ Este proyecto implementa un sistema embebido para el control de acceso y ventila
 ### 1. `room_control_update(room_control_t *room)`
 
 ```c
-void room_control_process_key(room_control_t *room, char key) {
-    ...
+void room_control_update(room_control_t *room) {
+    uint32_t current_time = HAL_GetTick();
+
+    switch (room->current_state) {
+        case ROOM_STATE_LOCKED:
+            // Mostrar mensaje y asegurar puerta cerrada
+            room->door_locked = true;
+            // Espera a que se presione una tecla (se maneja en process_key)
+            break;
+
+        case ROOM_STATE_INPUT_PASSWORD:
+            // Timeout: volver a LOCKED si no hay input en 10s
+            if (current_time - room->last_input_time > INPUT_TIMEOUT_MS) {
+                room_control_change_state(room, ROOM_STATE_LOCKED);
+            }
+            break;
+
+        case ROOM_STATE_UNLOCKED:
+            // Puerta abierta, LED encendido (puedes agregar aquí si tienes LED)
+            room->door_locked = false;
+            // Permitir comandos manuales (opcional)
+            break;
+
+        case ROOM_STATE_ACCESS_DENIED:
+            // Esperar 3 segundos y volver a LOCKED
+            if (current_time - room->state_enter_time > ACCESS_DENIED_TIMEOUT_MS) {
+                room_control_change_state(room, ROOM_STATE_LOCKED);
+            }
+            break;
+
+        case ROOM_STATE_EMERGENCY:
+            // Lógica de emergencia (opcional)
+            break;
+    }
+
+    room_control_update_door(room);
+    room_control_update_fan(room);
+
+    if (room->display_update_needed) {
+        room_control_update_display(room);
+        room->display_update_needed = false;
+    }
 }
 
-´´´
+```
+| Elemento                        | Función                                   |
+| ------------------------------- | ----------------------------------------- |
+| `HAL_GetTick()`                 | Mide el tiempo para gestionar timeouts    |
+| `switch (room->current_state)`  | Ejecuta lógica según estado               |
+| `room_control_update_door()`    | Controla mecanismo físico de la puerta    |
+| `room_control_update_fan()`     | Controla velocidad del ventilador por PWM |
+| `room_control_update_display()` | Actualiza interfaz visual (pantalla OLED) |
+
+```c
+void room_control_process_key(room_control_t *room, char key) {
+    room->last_input_time = HAL_GetTick();
+
+    switch (room->current_state) {
+        case ROOM_STATE_LOCKED:
+            // Iniciar ingreso de contraseña
+            room_control_clear_input(room);
+            if (room->input_index < PASSWORD_LENGTH && key >= '0' && key <= '9') {
+                room->input_buffer[room->input_index++] = key;
+                room_control_change_state(room, ROOM_STATE_INPUT_PASSWORD);
+            }
+            break;
+
+        case ROOM_STATE_INPUT_PASSWORD:
+            if (key >= '0' && key <= '9' && room->input_index < PASSWORD_LENGTH) {
+                room->input_buffer[room->input_index++] = key;
+            }
+            // Si ya se ingresaron 4 dígitos, validar
+            if (room->input_index == PASSWORD_LENGTH) {
+                if (strncmp(room->input_buffer, room->password, PASSWORD_LENGTH) == 0) {
+                    room_control_change_state(room, ROOM_STATE_UNLOCKED);
+                } else {
+                    room_control_change_state(room, ROOM_STATE_ACCESS_DENIED);
+                }
+            }
+            break;
+
+        case ROOM_STATE_UNLOCKED:
+            // Permitir volver a LOCKED con '*'
+            if (key == '*') {
+                room_control_change_state(room, ROOM_STATE_LOCKED);
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    room->display_update_needed = true;
+}
+```
+| Estado Actual    | Acción con la tecla        | Resultado                             |
+| ---------------- | -------------------------- | ------------------------------------- |
+| `LOCKED`         | Dígito numérico            | Empieza ingreso de clave              |
+| `INPUT_PASSWORD` | Dígito numérico            | Se almacena y evalúa la clave         |
+| `INPUT_PASSWORD` | Clave completa (4 dígitos) | Cambia a `UNLOCKED` o `ACCESS_DENIED` |
+| `UNLOCKED`       | Tecla `'*'`                | Vuelve a `LOCKED`                     |
+| Otro estado      | Cualquier tecla            | Se ignora                             |
+
+```c
+void room_control_set_temperature(room_control_t *room, float temperature) {
+    room->current_temperature = temperature;
+    
+    // Update fan level automatically if not in manual override
+    if (!room->manual_fan_override) {
+        fan_level_t new_level = room_control_calculate_fan_level(temperature);
+        if (new_level != room->current_fan_level) {
+            room->current_fan_level = new_level;
+            room->display_update_needed = true;
+        }
+    }
+    room->display_update_needed = true;
+}
+```
+| Paso | Acción                                                 | Condición                              | Resultado                                                        |
+| ---- | ------------------------------------------------------ | -------------------------------------- | ---------------------------------------------------------------- |
+| 1    | Asignar temperatura actual                             | Siempre                                | `room->current_temperature = temperature`                        |
+| 2    | Verificar modo automático                              | `!room->manual_fan_override`           | Permite ajuste automático del ventilador                         |
+| 3    | Calcular nuevo nivel del ventilador                    | Modo automático                        | `new_level = room_control_calculate_fan_level(temperature)`      |
+| 4    | Comparar con nivel actual y actualizar si es diferente | `new_level != room->current_fan_level` | Cambia el nivel del ventilador y marca actualización de pantalla |
+| 5    | Marcar actualización de pantalla                       | Siempre                                | `room->display_update_needed = true`                             |
+
+```c
+        case ROOM_STATE_INPUT_PASSWORD:
+            ssd1306_SetCursor(10, 10);
+            ssd1306_WriteString("CLAVE:", Font_7x10, White);
+            ssd1306_SetCursor(10, 25);
+            // Mostrar asteriscos según input_index
+            for (uint8_t i = 0; i < room->input_index; i++) {
+                ssd1306_WriteString("*", Font_7x10, White);
+            }
+            break;
+
+```
+| Paso | Acción                                   | Función utilizada                    | Resultado                                                       |
+| ---- | ---------------------------------------- | ------------------------------------ | --------------------------------------------------------------- |
+| 1    | Posicionar cursor para título            | `ssd1306_SetCursor(10, 10)`          | Cursor se posiciona en la parte superior de la pantalla         |
+| 2    | Mostrar texto "CLAVE:"                   | `ssd1306_WriteString("CLAVE:", ...)` | Instrucción para el usuario de que debe ingresar una contraseña |
+| 3    | Posicionar cursor para los asteriscos    | `ssd1306_SetCursor(10, 25)`          | Cursor baja a una nueva línea para mostrar la entrada           |
+| 4    | Mostrar un `*` por cada dígito ingresado | Bucle con `ssd1306_WriteString("*")` | Reemplaza cada número ingresado por un asterisco en pantalla    |
+
+```c
+        case ROOM_STATE_INPUT_PASSWORD:
+            ssd1306_SetCursor(10, 10);
+            ssd1306_WriteString("CLAVE:", Font_7x10, White);
+            ssd1306_SetCursor(10, 25);
+            // Mostrar asteriscos según input_index
+            for (uint8_t i = 0; i < room->input_index; i++) {
+                ssd1306_WriteString("*", Font_7x10, White);
+            }
+            break;
+
+```
+| Paso | Acción                                   | Función utilizada                    | Resultado                                                       |
+| ---- | ---------------------------------------- | ------------------------------------ | --------------------------------------------------------------- |
+| 1    | Posicionar cursor para título            | `ssd1306_SetCursor(10, 10)`          | Cursor se posiciona en la parte superior de la pantalla         |
+| 2    | Mostrar texto "CLAVE:"                   | `ssd1306_WriteString("CLAVE:", ...)` | Instrucción para el usuario de que debe ingresar una contraseña |
+| 3    | Posicionar cursor para los asteriscos    | `ssd1306_SetCursor(10, 25)`          | Cursor baja a una nueva línea para mostrar la entrada           |
+| 4    | Mostrar un `*` por cada dígito ingresado | Bucle con `ssd1306_WriteString("*")` | Reemplaza cada número ingresado por un asterisco en pantalla    |
+
+```c
+static void room_control_update_fan(room_control_t *room) {
+    // Control PWM del ventilador según el nivel
+    uint32_t pwm_value = 0;
+    switch (room->current_fan_level) {
+        case FAN_LEVEL_OFF:
+            pwm_value = 0;
+            break;
+        case FAN_LEVEL_LOW:
+            pwm_value = (30 * 99) / 100; // 30% de 99
+            break;
+        case FAN_LEVEL_MED:
+            pwm_value = (70 * 99) / 100; // 70% de 99
+            break;
+        case FAN_LEVEL_HIGH:
+            pwm_value = 99; // 100%
+            break;
+    }
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pwm_value);
+}   
+
+```
+| Paso | Acción                             | Valor PWM Asignado           | Resultado                                                             |
+| ---- | ---------------------------------- | ---------------------------- | --------------------------------------------------------------------- |
+| 1    | Inicializar valor PWM              | `pwm_value = 0`              | Comienza con ventilador apagado                                       |
+| 2    | Evaluar `current_fan_level`        | `switch`                     | Se selecciona el nivel del ventilador                                 |
+| 3    | Asignar PWM según nivel:           |                              |                                                                       |
+|      | - `FAN_LEVEL_OFF`                  | `0`                          | Ventilador apagado                                                    |
+|      | - `FAN_LEVEL_LOW`                  | `≈30%` (`(30*99)/100 = 29`)  | Ventilador a baja velocidad                                           |
+|      | - `FAN_LEVEL_MED`                  | `≈70%` (`(70*99)/100 = 69`)  | Ventilador a velocidad media                                          |
+|      | - `FAN_LEVEL_HIGH`                 | `99`                         | Ventilador a máxima velocidad                                         |
+| 4    | Actualizar señal PWM al ventilador | `__HAL_TIM_SET_COMPARE(...)` | Se aplica el valor PWM al canal correspondiente del timer (TIM3\_CH1) |
+
+## main.c
+
+
+
+
+
+
