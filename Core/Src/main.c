@@ -120,9 +120,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 void heartbeat(void)
 {
   static uint32_t last_toggle = 0;
-  if (HAL_GetTick() - last_toggle >= 500) { // Toggle every 500 ms
-    led_toggle(&heartbeat_led); // Toggle the heartbeat LED
-    last_toggle = HAL_GetTick();
+  // Solo parpadea si el sistema está bloqueado
+  if (room_control_get_state(&room_system) == ROOM_STATE_LOCKED) {
+    if (HAL_GetTick() - last_toggle >= 500) {
+      led_toggle(&heartbeat_led);
+      last_toggle = HAL_GetTick();
+    }
   }
 }
 
@@ -237,14 +240,15 @@ int main(void)
     // command_parser_process(); // Procesar comandos de UART2 y UART3
     
     // TODO: TAREA - Leer sensor de temperatura y actualizar sistema
-    HAL_ADC_Start(&hadc1);
-    if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {
-      uint32_t adc_value = HAL_ADC_GetValue(&hadc1);
-      // Mapea el valor ADC (0-4095) a temperatura (20°C a 40°C)
-      float temperature = 20.0f + ((float)adc_value * 20.0f / 4095.0f);
-      room_control_set_temperature(&room_system, temperature);
-    }
-    HAL_ADC_Stop(&hadc1);
+  HAL_ADC_Start(&hadc1);
+  if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {
+    uint32_t adc_value = HAL_ADC_GetValue(&hadc1);
+  // Mapea el valor ADC (0-4095) a temperatura (20°C a 40°C)
+    float voltage = (adc_value * 3.3f) / 4095.0f;
+    float temperature = voltage * 100.0f; // 10mV/°C → 100°C/V
+    room_control_set_temperature(&room_system, temperature);
+}
+HAL_ADC_Stop(&hadc1);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

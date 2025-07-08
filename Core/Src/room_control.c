@@ -4,9 +4,11 @@
 #include <string.h>
 #include <stdio.h>
 #include "main.h"
+#include "led.h" // <-- AGREGA ESTA LÍNEA
 
 
 extern TIM_HandleTypeDef htim3;
+extern led_handle_t heartbeat_led; // <-- AGREGA ESTA LÍNEA
 // Default password
 static const char DEFAULT_PASSWORD[] = "1234";
 
@@ -190,15 +192,18 @@ static void room_control_change_state(room_control_t *room, room_state_t new_sta
         case ROOM_STATE_LOCKED:
             room->door_locked = true;
             room_control_clear_input(room);
+            led_off(&heartbeat_led); // <-- APAGA EL LED, el parpadeo lo hace main.c
             break;
             
         case ROOM_STATE_UNLOCKED:
             room->door_locked = false;
             room->manual_fan_override = false;  // Reset manual override
+            led_on(&heartbeat_led); // <-- ENCIENDE EL LED
             break;
             
         case ROOM_STATE_ACCESS_DENIED:
             room_control_clear_input(room);
+            led_off(&heartbeat_led); // <-- APAGA EL LED
             break;
             
         default:
