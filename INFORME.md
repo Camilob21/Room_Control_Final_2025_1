@@ -47,7 +47,7 @@ Este proyecto implementa un sistema embebido para el control de acceso y ventila
 ## Decisiones de Diseño y Explicaciones de Código
 ---
 
-### 1. `room_control_update(room_control_t *room)`
+### Sistema de control de estados###
 
 ```c
 void room_control_update(room_control_t *room) {
