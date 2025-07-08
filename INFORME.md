@@ -47,7 +47,7 @@ Este proyecto implementa un sistema embebido para el control de acceso y ventila
 ## Decisiones de Diseño y Explicaciones de Código
 ---
 
-### Sistema de control de estados###
+### Sistema de control de estados
 
 ```c
 void room_control_update(room_control_t *room) {
@@ -103,6 +103,7 @@ void room_control_update(room_control_t *room) {
 | `room_control_update_fan()`     | Controla velocidad del ventilador por PWM |
 | `room_control_update_display()` | Actualiza interfaz visual (pantalla OLED) |
 
+###Manejo de entrada de teclado en funcion del estado del sistema. (Interaccion con el dispositivo)
 ```c
 void room_control_process_key(room_control_t *room, char key) {
     room->last_input_time = HAL_GetTick();
@@ -153,6 +154,7 @@ void room_control_process_key(room_control_t *room, char key) {
 | `UNLOCKED`       | Tecla `'*'`                | Vuelve a `LOCKED`                     |
 | Otro estado      | Cualquier tecla            | Se ignora                             |
 
+###Actualizar la temperatura actual de la habitacion y ajustar el nivel del ventilador
 ```c
 void room_control_set_temperature(room_control_t *room, float temperature) {
     room->current_temperature = temperature;
@@ -176,24 +178,6 @@ void room_control_set_temperature(room_control_t *room, float temperature) {
 | 4    | Comparar con nivel actual y actualizar si es diferente | `new_level != room->current_fan_level` | Cambia el nivel del ventilador y marca actualización de pantalla |
 | 5    | Marcar actualización de pantalla                       | Siempre                                | `room->display_update_needed = true`                             |
 
-```c
-        case ROOM_STATE_INPUT_PASSWORD:
-            ssd1306_SetCursor(10, 10);
-            ssd1306_WriteString("CLAVE:", Font_7x10, White);
-            ssd1306_SetCursor(10, 25);
-            // Mostrar asteriscos según input_index
-            for (uint8_t i = 0; i < room->input_index; i++) {
-                ssd1306_WriteString("*", Font_7x10, White);
-            }
-            break;
-
-```
-| Paso | Acción                                   | Función utilizada                    | Resultado                                                       |
-| ---- | ---------------------------------------- | ------------------------------------ | --------------------------------------------------------------- |
-| 1    | Posicionar cursor para título            | `ssd1306_SetCursor(10, 10)`          | Cursor se posiciona en la parte superior de la pantalla         |
-| 2    | Mostrar texto "CLAVE:"                   | `ssd1306_WriteString("CLAVE:", ...)` | Instrucción para el usuario de que debe ingresar una contraseña |
-| 3    | Posicionar cursor para los asteriscos    | `ssd1306_SetCursor(10, 25)`          | Cursor baja a una nueva línea para mostrar la entrada           |
-| 4    | Mostrar un `*` por cada dígito ingresado | Bucle con `ssd1306_WriteString("*")` | Reemplaza cada número ingresado por un asterisco en pantalla    |
 
 ```c
         case ROOM_STATE_INPUT_PASSWORD:
@@ -214,6 +198,27 @@ void room_control_set_temperature(room_control_t *room, float temperature) {
 | 3    | Posicionar cursor para los asteriscos    | `ssd1306_SetCursor(10, 25)`          | Cursor baja a una nueva línea para mostrar la entrada           |
 | 4    | Mostrar un `*` por cada dígito ingresado | Bucle con `ssd1306_WriteString("*")` | Reemplaza cada número ingresado por un asterisco en pantalla    |
 
+###Mostrar la contraseña en nuevo formato (****)
+```c
+        case ROOM_STATE_INPUT_PASSWORD:
+            ssd1306_SetCursor(10, 10);
+            ssd1306_WriteString("CLAVE:", Font_7x10, White);
+            ssd1306_SetCursor(10, 25);
+            // Mostrar asteriscos según input_index
+            for (uint8_t i = 0; i < room->input_index; i++) {
+                ssd1306_WriteString("*", Font_7x10, White);
+            }
+            break;
+
+```
+| Paso | Acción                                   | Función utilizada                    | Resultado                                                       |
+| ---- | ---------------------------------------- | ------------------------------------ | --------------------------------------------------------------- |
+| 1    | Posicionar cursor para título            | `ssd1306_SetCursor(10, 10)`          | Cursor se posiciona en la parte superior de la pantalla         |
+| 2    | Mostrar texto "CLAVE:"                   | `ssd1306_WriteString("CLAVE:", ...)` | Instrucción para el usuario de que debe ingresar una contraseña |
+| 3    | Posicionar cursor para los asteriscos    | `ssd1306_SetCursor(10, 25)`          | Cursor baja a una nueva línea para mostrar la entrada           |
+| 4    | Mostrar un `*` por cada dígito ingresado | Bucle con `ssd1306_WriteString("*")` | Reemplaza cada número ingresado por un asterisco en pantalla    |
+
+###Control automatico con PWM del ventilador en funcion de la temperatura.
 ```c
 static void room_control_update_fan(room_control_t *room) {
     // Control PWM del ventilador según el nivel
@@ -248,6 +253,60 @@ static void room_control_update_fan(room_control_t *room) {
 | 4    | Actualizar señal PWM al ventilador | `__HAL_TIM_SET_COMPARE(...)` | Se aplica el valor PWM al canal correspondiente del timer (TIM3\_CH1) |
 
 ## main.c
+###Inicializacion de funciones
+ADC1, pin analogico para el sensor, en este caso un potenciometro
+```c
+static void MX_ADC1_Init(void);
+```
+Sistema de3 control de habitacion:
+```c
+room_control_init(&room_system);
+```
+PWM, generar señal
+```c
+HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+```
+###Leer teclado y actualizar las maquina de estado:
+```c
+    room_control_update(&room_system);
+        // Procesa teclas del keypad
+    if (keypad_interrupt_pin != 0) {
+      char key = keypad_scan(&keypad, keypad_interrupt_pin);
+      if (key != '\0') {
+        room_control_process_key(&room_system, key);
+      }
+      keypad_interrupt_pin = 0;
+    }
+```
+
+| Línea / Bloque de Código                       | Propósito                                                               |
+| ---------------------------------------------- | ----------------------------------------------------------------------- |
+| `room_control_update(&room_system);`           | Ejecuta la lógica de la **máquina de estados** (según tiempo y estado)  |
+| `if (keypad_interrupt_pin != 0)`               | Comprueba si **se presionó una tecla**                                  |
+| `keypad_scan(...)`                             | Identifica **qué tecla fue presionada**                                 |
+| `if (key != '\0')`                             | Verifica que la tecla es válida                                         |
+| `room_control_process_key(&room_system, key);` | Procesa la tecla en el contexto del estado actual (ej. clave, comandos) |
+| `keypad_interrupt_pin = 0;`                    | Limpia el pin de interrupción para permitir nuevas entradas             |
+
+###Leer el sensor a traves de ADC y actualizar logica del sistema
+```c
+    HAL_ADC_Start(&hadc1);
+    if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {
+      uint32_t adc_value = HAL_ADC_GetValue(&hadc1);
+      // Mapea el valor ADC (0-4095) a temperatura (20°C a 40°C)
+      float temperature = 20.0f + ((float)adc_value * 20.0f / 4095.0f);
+      room_control_set_temperature(&room_system, temperature);
+    }
+    HAL_ADC_Stop(&hadc1);
+```
+| Línea de Código                                              | Acción                                                   |
+| ------------------------------------------------------------ | -------------------------------------------------------- |
+| `HAL_ADC_Start(&hadc1);`                                     | Inicia una conversión analógica a digital con el ADC1    |
+| `HAL_ADC_PollForConversion(..., 10)`                         | Espera máximo 10 ms a que termine la conversión          |
+| `HAL_ADC_GetValue(...)`                                      | Obtiene el valor digital (0–4095)                        |
+| `float temperature = 20.0f + ((float)adc_value * 20 / 4095)` | Convierte el valor a temperatura entre 20 °C y 40 °C     |
+| `room_control_set_temperature(&room_system, temperature);`   | Actualiza la lógica del sistema con la nueva temperatura |
+| `HAL_ADC_Stop(&hadc1);`                                      | Detiene el ADC para finalizar el proceso                 |
 
 
 
