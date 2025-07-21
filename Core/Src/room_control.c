@@ -4,15 +4,15 @@
 #include <string.h>
 #include <stdio.h>
 #include "main.h"
-#include "led.h" // <-- AGREGA ESTA LÍNEA
+#include "led.h" 
 
-
+// Declaración de periféricos externos
 extern TIM_HandleTypeDef htim3;
 extern led_handle_t heartbeat_led; // <-- AGREGA ESTA LÍNEA
-
 extern UART_HandleTypeDef huart3;
 extern TIM_HandleTypeDef htim2;  
 extern UART_HandleTypeDef huart2;
+
 // Default password
 static const char DEFAULT_PASSWORD[] = "1234";
 
@@ -33,6 +33,7 @@ static void room_control_update_fan(room_control_t *room);
 static fan_level_t room_control_calculate_fan_level(float temperature);
 static void room_control_clear_input(room_control_t *room);
 
+// Inicializa los parámetros y estado inicial del sistema
 void room_control_init(room_control_t *room) {
     // Initialize room control structure
     room->current_state = ROOM_STATE_LOCKED;
@@ -42,7 +43,7 @@ void room_control_init(room_control_t *room) {
     room->state_enter_time = HAL_GetTick();
     
     // Initialize door control
-    room->door_locked = true;
+    room->door_locked = true;// Puerta cerrada
     
     // Initialize temperature and fan
     room->current_temperature = 22.0f;  // Default room temperature
@@ -56,6 +57,7 @@ void room_control_init(room_control_t *room) {
     // Ejemplo: HAL_GPIO_WritePin(DOOR_STATUS_GPIO_Port, DOOR_STATUS_Pin, GPIO_PIN_RESET);
 }
 
+// Actualiza el estado general según el tiempo y la lógica de control
 void room_control_update(room_control_t *room) {
     uint32_t current_time = HAL_GetTick();
 
@@ -100,6 +102,7 @@ void room_control_update(room_control_t *room) {
     }
 }
 
+// Procesa una tecla según el estado actual
 void room_control_process_key(room_control_t *room, char key) {
     room->last_input_time = HAL_GetTick();
 
@@ -141,7 +144,7 @@ void room_control_process_key(room_control_t *room, char key) {
     room->display_update_needed = true;
 }
 
-
+// Asigna temperatura leída y actualiza el nivel de ventilador si está en modo a
 void room_control_set_temperature(room_control_t *room, float temperature) {
     room->current_temperature = temperature;
     
@@ -156,6 +159,7 @@ void room_control_set_temperature(room_control_t *room, float temperature) {
     room->display_update_needed = true;
 }
 
+// Fuerza un nivel de ventilador manualmente (sobrescribe automático)
 void room_control_force_fan_level(room_control_t *room, fan_level_t level) {
     if (level != FAN_LEVEL_OFF && level != FAN_LEVEL_LOW &&
         level != FAN_LEVEL_MED && level != FAN_LEVEL_HIGH) {
@@ -165,17 +169,18 @@ void room_control_force_fan_level(room_control_t *room, fan_level_t level) {
     room->manual_fan_override = true;
     room->current_fan_level = level;
 
-    room_control_update_fan(room);           // ✅ Esta línea es la clave
+    room_control_update_fan(room);           //Esta línea es clave
     room->display_update_needed = true;
 }
 
-
+// Cambia la contraseña si tiene la longitud correcta
 void room_control_change_password(room_control_t *room, const char *new_password) {
     if (strlen(new_password) == PASSWORD_LENGTH) {
         strcpy(room->password, new_password);
     }
 }
 
+// Funciones de acceso (getters)
 // Status getters
 room_state_t room_control_get_state(room_control_t *room) {
     return room->current_state;
@@ -194,6 +199,7 @@ float room_control_get_temperature(room_control_t *room) {
 }
 
 // Private functions
+// Cambia de estado y actualiza LED, mensajes, etc.
 static void room_control_change_state(room_control_t *room, room_state_t new_state) {
     room->current_state = new_state;
     room->state_enter_time = HAL_GetTick();
@@ -204,18 +210,18 @@ static void room_control_change_state(room_control_t *room, room_state_t new_sta
         case ROOM_STATE_LOCKED:
             room->door_locked = true;
             room_control_clear_input(room);
-            led_off(&heartbeat_led); // <-- APAGA EL LED, el parpadeo lo hace main.c
+            led_off(&heartbeat_led); //APAGA EL LED, el parpadeo lo hace main.c
             break;
             
         case ROOM_STATE_UNLOCKED:
             room->door_locked = false;
             room->manual_fan_override = false;  // Reset manual override
-            led_on(&heartbeat_led); // <-- ENCIENDE EL LED
+            led_on(&heartbeat_led); //ENCIENDE EL LED
             break;
             
         case ROOM_STATE_ACCESS_DENIED:
             room_control_clear_input(room);
-            led_off(&heartbeat_led); // <-- APAGA EL LED
+            led_off(&heartbeat_led); //APAGA EL LED
 
             char alert_msg[] = "POST /alert HTTP/1.1\r\n"
                            "Host: mi-servidor.com\r\n"
@@ -228,6 +234,7 @@ static void room_control_change_state(room_control_t *room, room_state_t new_sta
     }
 }
 
+// Convierte el nivel de ventilador a porcentaje para mostrar
 static uint8_t fan_level_to_percent(fan_level_t level) {
     switch (level) {
         case FAN_LEVEL_LOW: return 33;
@@ -238,7 +245,7 @@ static uint8_t fan_level_to_percent(fan_level_t level) {
     }
 }
 
-
+// Muestra estado, temperatura y ventilador en pantalla OLED
 static void room_control_update_display(room_control_t *room) {
     char display_buffer[32];
 
@@ -266,7 +273,7 @@ static void room_control_update_display(room_control_t *room) {
             ssd1306_SetCursor(10, 10);
             ssd1306_WriteString("ACCESO OK", Font_7x10, White);
 
-            // --- CORREGIDO: Mostrar temperatura con un decimal ---
+            //Mostrar temperatura
             snprintf(display_buffer, sizeof(display_buffer), "Temp: %d C", (int)(room->current_temperature));
             ssd1306_SetCursor(10, 25);
             ssd1306_WriteString(display_buffer, Font_7x10, White);
@@ -291,8 +298,7 @@ static void room_control_update_display(room_control_t *room) {
     ssd1306_UpdateScreen();
 }
 
-
-
+// Control físico de la puerta
 static void room_control_update_door(room_control_t *room) {
     // TODO: TAREA - Implementar control físico de la puerta
     // Ejemplo usando el pin DOOR_STATUS:
@@ -303,6 +309,7 @@ static void room_control_update_door(room_control_t *room) {
     }
 }
 
+// Control del ventilador usando PWM
 static void room_control_update_fan(room_control_t *room) {
     char msg[32];
     uint32_t pwm_value = 0;
@@ -332,7 +339,7 @@ static void room_control_update_fan(room_control_t *room) {
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pwm_value);
 }
 
-
+// Lógica de control automático de ventilador según temperatura
 static fan_level_t room_control_calculate_fan_level(float temperature) {
     // TODO: TAREA - Implementar lógica de niveles de ventilador
     if (temperature < TEMP_THRESHOLD_LOW) {
@@ -346,6 +353,7 @@ static fan_level_t room_control_calculate_fan_level(float temperature) {
     }
 }
 
+// Limpia el buffer de entrada de clave
 static void room_control_clear_input(room_control_t *room) {
     memset(room->input_buffer, 0, sizeof(room->input_buffer));
     room->input_index = 0;

@@ -26,7 +26,6 @@
 #include "ring_buffer.h"
 #include "room_control.h"
 #include <stdio.h>
-
 #include "ssd1306.h"
 #include "ssd1306_fonts.h"
 #include "command_parser.h"
@@ -49,45 +48,46 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+
 ADC_HandleTypeDef hadc1;
-
 I2C_HandleTypeDef hi2c1;
-
 TIM_HandleTypeDef htim3;
 DMA_HandleTypeDef hdma_tim3_ch1_trig;
-
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 uint8_t button_pressed = 0; // Flag to indicate if the button is pressed
 
+// Estructura que contiene la configuración del LED de "latido" (LD2)
 led_handle_t heartbeat_led = {
     .port = LD2_GPIO_Port,
     .pin = LD2_Pin
 };
 
-uint8_t usart_2_rxbyte = 0; // Variable to hold received byte from UART3
+// Variable para almacenar el byte recibido por UART2 (canal de depuración o consola)
+uint8_t usart_2_rxbyte = 0; 
 
+// Configuración del teclado matricial (Keypad 4x4)
 keypad_handle_t keypad = {
     .row_ports = {KEYPAD_R1_GPIO_Port, KEYPAD_R2_GPIO_Port, KEYPAD_R3_GPIO_Port, KEYPAD_R4_GPIO_Port},
     .row_pins  = {KEYPAD_R1_Pin, KEYPAD_R2_Pin, KEYPAD_R3_Pin, KEYPAD_R4_Pin},
     .col_ports = {KEYPAD_C1_GPIO_Port, KEYPAD_C2_GPIO_Port, KEYPAD_C3_GPIO_Port, KEYPAD_C4_GPIO_Port},
     .col_pins  = {KEYPAD_C1_Pin, KEYPAD_C2_Pin, KEYPAD_C3_Pin, KEYPAD_C4_Pin}
 };
-
 #define KEYPAD_BUFFER_LEN 16
+// Buffer circular donde se almacenan las teclas presionadas
 uint8_t keypad_buffer[KEYPAD_BUFFER_LEN];
 ring_buffer_t keypad_rb;
-
+// Variable para identificar cuál pin del keypad generó una interrupción
 volatile uint16_t keypad_interrupt_pin = 0;
 
-// Room control system instance
+//Estructura principal que representa el sistema de control del cuarto
 room_control_t room_system;
 
-extern ADC_HandleTypeDef hadc1;
-
+// Byte recibido por UART3 (canal del ESP-01 para control remoto)
 uint8_t usart_3_rxbyte = 0;
+
 TIM_HandleTypeDef htim2;
 
 /* USER CODE END PV */
@@ -107,33 +107,40 @@ static void MX_USART3_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+// Callback de interrupción para pines GPIO (por ejemplo, botón B1 o columnas del keypad)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if (GPIO_Pin == B1_Pin) {
+    // Si se presiona el botón físico, se activa la bandera
     button_pressed = 1; // Set the flag when the button is pressed
   } else {
+    // Si es una interrupción de columna del keypad, se guarda el pin
     keypad_interrupt_pin = GPIO_Pin;
   }
 }
 
+// Callback cuando se recibe un byte por UART (tanto en UART2 como en UART3)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART2) {
+    // Procesa el byte recibido por la terminal UART2
     command_parser_process_debug(usart_2_rxbyte);
     HAL_UART_Receive_IT(&huart2, &usart_2_rxbyte, 1);
   } else if (huart->Instance == USART3) {
+     // Procesa el byte recibido por el ESP-01 (WiFi) a través de UART3
     command_parser_process_esp01(usart_3_rxbyte);
     HAL_UART_Receive_IT(&huart3, &usart_3_rxbyte, 1);
   }
 }
 
-
-
+// Función para hacer parpadear el LED LD2 cuando el sistema está en estado bloqueado
 void heartbeat(void)
 {
   static uint32_t last_toggle = 0;
   // Solo parpadea si el sistema está bloqueado
   if (room_control_get_state(&room_system) == ROOM_STATE_LOCKED) {
+    // El LED parpadea cada 500ms
     if (HAL_GetTick() - last_toggle >= 500) {
       led_toggle(&heartbeat_led);
       last_toggle = HAL_GetTick();
@@ -141,6 +148,7 @@ void heartbeat(void)
   }
 }
 
+// Escribe un mensaje en la pantalla OLED en una posición específica
 void write_to_oled(char *message, SSD1306_COLOR color, uint8_t x, uint8_t y)
 {
   ssd1306_Fill(Black); // Clear the display
@@ -149,26 +157,29 @@ void write_to_oled(char *message, SSD1306_COLOR color, uint8_t x, uint8_t y)
   ssd1306_UpdateScreen(); // Update the display to show the message
 }
 
+// Función que lee el sensor LM35 conectado al ADC
 float read_temperature(void) {
     const int NUM_SAMPLES = 16;
     uint32_t adc_sum = 0;
 
+    // Toma 16 muestras para hacer un promedio y filtrar ruido
     for (int i = 0; i < NUM_SAMPLES; ++i) {
         HAL_ADC_Start(&hadc1);
         if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {
             adc_sum += HAL_ADC_GetValue(&hadc1);
         }
         HAL_ADC_Stop(&hadc1);
-        HAL_Delay(2);
+        HAL_Delay(2);// Pausa pequeña entre lecturas
     }
 
+    // Se convierte la lectura promedio a voltaje y luego a temperatura
     float adc_avg = adc_sum / (float)NUM_SAMPLES;
     float voltage = (adc_avg * 3.3f) / 4095.0f;
 
-    // Inversión forzada (solo si estás seguro de que el sensor se comporta así)
+    // Inversión forzada
     float inverted_voltage = 0.5f - voltage; // Ajusta el offset según tu sensor
 
-    return inverted_voltage * 100.0f;
+    return inverted_voltage * 100.0f;// LM35 da 10mV por °C → 1V = 100°C
 }
 
 /* USER CODE END 0 */
@@ -209,44 +220,55 @@ int main(void)
   MX_ADC1_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-  led_init(&heartbeat_led);
-  ssd1306_Init();
+
+  led_init(&heartbeat_led);// Inicializa el LED de latido (LED verde LD2)
+  ssd1306_Init();// Inicializa pantalla OLED
+
+  // Habilita recepción por interrupción en UART2 y UART3 (modo no bloqueante)
   HAL_UART_Receive_IT(&huart2, &usart_2_rxbyte, 1);
   HAL_UART_Receive_IT(&huart3, &usart_3_rxbyte, 1);
 
+  // Inicializa buffer circular y el keypad físico
   ring_buffer_init(&keypad_rb, keypad_buffer, KEYPAD_BUFFER_LEN);
   keypad_init(&keypad);
   
   
   // TODO: TAREA - Descomentar cuando implementen la lógica del sistema
+  // Inicializa la lógica del sistema de control del cuarto (estados, contraseña, etc.)
   room_control_init(&room_system);
 
-    // Iniciar PWM para el ventilador
+  // Iniciar PWM para el ventilador
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
   // Clear the display
   ssd1306_Fill(Black);
   // Display a message on the OLED
   ssd1306_SetCursor(17, 17); // Set cursor to the center
-  ssd1306_WriteString("Hello, 4100901!", Font_7x10, White);
+  ssd1306_WriteString("Welcome to Room Control", Font_7x10, White);
   ssd1306_UpdateScreen(); // Update the display to show the
-  HAL_UART_Transmit(&huart2, (uint8_t *)"Hello, 4100901!\r\n", 17, HAL_MAX_DELAY);
+  HAL_UART_Transmit(&huart2, (uint8_t *)"Welcome to Room Control\r\n", 27, HAL_MAX_DELAY);
+  
   while (1) {
+    // Parpadea el LED si el sistema está bloqueado
     heartbeat(); // Call the heartbeat function to toggle the LED
 
     // TODO: TAREA - Descomentar cuando implementen la máquina de estados
+    // Actualiza el sistema de control del cuarto (máquina de estados)
     room_control_update(&room_system);
-        // Procesa teclas del keypad
+   
+    // Procesa teclas del keypad
     if (keypad_interrupt_pin != 0) {
-      char key = keypad_scan(&keypad, keypad_interrupt_pin);
+      char key = keypad_scan(&keypad, keypad_interrupt_pin);// Lee la tecla presionada
       if (key != '\0') {
         // TODO: TAREA - Descomentar para enviar teclas al sistema de control
-        room_control_process_key(&room_system, key);
+        room_control_process_key(&room_system, key);// Envía la tecla al sistema de control del cuarto
       }
-      keypad_interrupt_pin = 0;
+      keypad_interrupt_pin = 0;// Limpia el pin de interrupción para evitar lecturas duplicadas
     }
 
     // DEMO: Button functionality - Remove when implementing room control logic  
@@ -266,7 +288,7 @@ int main(void)
     
     // TODO: TAREA - Leer sensor de temperatura y actualizar sistema
     float temperature = read_temperature();
-    room_control_set_temperature(&room_system, temperature);
+    room_control_set_temperature(&room_system, temperature);// Actualiza la temperatura en la estructura del sistema
 
     /* USER CODE END WHILE */
 
