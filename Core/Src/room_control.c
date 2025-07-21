@@ -9,6 +9,10 @@
 
 extern TIM_HandleTypeDef htim3;
 extern led_handle_t heartbeat_led; // <-- AGREGA ESTA LÍNEA
+
+extern UART_HandleTypeDef huart3;
+extern TIM_HandleTypeDef htim2;  
+extern UART_HandleTypeDef huart2;
 // Default password
 static const char DEFAULT_PASSWORD[] = "1234";
 
@@ -153,10 +157,18 @@ void room_control_set_temperature(room_control_t *room, float temperature) {
 }
 
 void room_control_force_fan_level(room_control_t *room, fan_level_t level) {
+    if (level != FAN_LEVEL_OFF && level != FAN_LEVEL_LOW &&
+        level != FAN_LEVEL_MED && level != FAN_LEVEL_HIGH) {
+        return;
+    }
+
     room->manual_fan_override = true;
     room->current_fan_level = level;
+
+    room_control_update_fan(room);           // ✅ Esta línea es la clave
     room->display_update_needed = true;
 }
+
 
 void room_control_change_password(room_control_t *room, const char *new_password) {
     if (strlen(new_password) == PASSWORD_LENGTH) {
@@ -204,6 +216,11 @@ static void room_control_change_state(room_control_t *room, room_state_t new_sta
         case ROOM_STATE_ACCESS_DENIED:
             room_control_clear_input(room);
             led_off(&heartbeat_led); // <-- APAGA EL LED
+
+            char alert_msg[] = "POST /alert HTTP/1.1\r\n"
+                           "Host: mi-servidor.com\r\n"
+                           "\r\nAcceso denegado detectado\r\n";
+            HAL_UART_Transmit(&huart3, (uint8_t*)alert_msg, strlen(alert_msg), 1000);
             break;
             
         default:
@@ -211,7 +228,17 @@ static void room_control_change_state(room_control_t *room, room_state_t new_sta
     }
 }
 
-    
+static uint8_t fan_level_to_percent(fan_level_t level) {
+    switch (level) {
+        case FAN_LEVEL_LOW: return 33;
+        case FAN_LEVEL_MED: return 66;
+        case FAN_LEVEL_HIGH: return 99;
+        case FAN_LEVEL_OFF:
+        default: return 0;
+    }
+}
+
+
 static void room_control_update_display(room_control_t *room) {
     char display_buffer[32];
 
@@ -244,7 +271,7 @@ static void room_control_update_display(room_control_t *room) {
             ssd1306_SetCursor(10, 25);
             ssd1306_WriteString(display_buffer, Font_7x10, White);
 
-            snprintf(display_buffer, sizeof(display_buffer), "Fan: %d%%", room->current_fan_level);
+            snprintf(display_buffer, sizeof(display_buffer), "Fan: %d%%", fan_level_to_percent(room->current_fan_level));
             ssd1306_SetCursor(10, 40);
             ssd1306_WriteString(display_buffer, Font_7x10, White);
             break;
@@ -277,24 +304,34 @@ static void room_control_update_door(room_control_t *room) {
 }
 
 static void room_control_update_fan(room_control_t *room) {
-    // Control PWM del ventilador según el nivel
+    char msg[32];
     uint32_t pwm_value = 0;
+
     switch (room->current_fan_level) {
         case FAN_LEVEL_OFF:
             pwm_value = 0;
             break;
         case FAN_LEVEL_LOW:
-            pwm_value = (30 * 99) / 100; // 30% de 99
+            pwm_value = 30;  // directo, 30%
             break;
         case FAN_LEVEL_MED:
-            pwm_value = (70 * 99) / 100; // 70% de 99
+            pwm_value = 70;  // directo, 70%
             break;
         case FAN_LEVEL_HIGH:
-            pwm_value = 99; // 100%
+            pwm_value = 99;  // 100%
             break;
+        default:
+            snprintf(msg, sizeof(msg), "Invalid fan level: %d\r\n", room->current_fan_level);
+            HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+            return;
     }
+
+    snprintf(msg, sizeof(msg), "Set PWM: %lu\r\n", pwm_value);
+    HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pwm_value);
-}   
+}
+
 
 static fan_level_t room_control_calculate_fan_level(float temperature) {
     // TODO: TAREA - Implementar lógica de niveles de ventilador
@@ -312,4 +349,4 @@ static fan_level_t room_control_calculate_fan_level(float temperature) {
 static void room_control_clear_input(room_control_t *room) {
     memset(room->input_buffer, 0, sizeof(room->input_buffer));
     room->input_index = 0;
-}
+}   

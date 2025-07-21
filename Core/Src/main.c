@@ -29,6 +29,7 @@
 
 #include "ssd1306.h"
 #include "ssd1306_fonts.h"
+#include "command_parser.h"
 
 /* USER CODE END Includes */
 
@@ -56,6 +57,7 @@ TIM_HandleTypeDef htim3;
 DMA_HandleTypeDef hdma_tim3_ch1_trig;
 
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 uint8_t button_pressed = 0; // Flag to indicate if the button is pressed
@@ -84,6 +86,10 @@ volatile uint16_t keypad_interrupt_pin = 0;
 room_control_t room_system;
 
 extern ADC_HandleTypeDef hadc1;
+
+uint8_t usart_3_rxbyte = 0;
+TIM_HandleTypeDef htim2;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -94,6 +100,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -112,9 +119,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART2) {
+    command_parser_process_debug(usart_2_rxbyte);
     HAL_UART_Receive_IT(&huart2, &usart_2_rxbyte, 1);
+  } else if (huart->Instance == USART3) {
+    command_parser_process_esp01(usart_3_rxbyte);
+    HAL_UART_Receive_IT(&huart3, &usart_3_rxbyte, 1);
   }
 }
+
 
 
 void heartbeat(void)
@@ -137,6 +149,28 @@ void write_to_oled(char *message, SSD1306_COLOR color, uint8_t x, uint8_t y)
   ssd1306_UpdateScreen(); // Update the display to show the message
 }
 
+float read_temperature(void) {
+    const int NUM_SAMPLES = 16;
+    uint32_t adc_sum = 0;
+
+    for (int i = 0; i < NUM_SAMPLES; ++i) {
+        HAL_ADC_Start(&hadc1);
+        if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {
+            adc_sum += HAL_ADC_GetValue(&hadc1);
+        }
+        HAL_ADC_Stop(&hadc1);
+        HAL_Delay(2);
+    }
+
+    float adc_avg = adc_sum / (float)NUM_SAMPLES;
+    float voltage = (adc_avg * 3.3f) / 4095.0f;
+
+    // Inversión forzada (solo si estás seguro de que el sensor se comporta así)
+    float inverted_voltage = 0.5f - voltage; // Ajusta el offset según tu sensor
+
+    return inverted_voltage * 100.0f;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -153,7 +187,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+    HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -173,11 +207,13 @@ int main(void)
   MX_I2C1_Init();
   MX_TIM3_Init();
   MX_ADC1_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   led_init(&heartbeat_led);
   ssd1306_Init();
   HAL_UART_Receive_IT(&huart2, &usart_2_rxbyte, 1);
-  
+  HAL_UART_Receive_IT(&huart3, &usart_3_rxbyte, 1);
+
   ring_buffer_init(&keypad_rb, keypad_buffer, KEYPAD_BUFFER_LEN);
   keypad_init(&keypad);
   
@@ -207,19 +243,8 @@ int main(void)
     if (keypad_interrupt_pin != 0) {
       char key = keypad_scan(&keypad, keypad_interrupt_pin);
       if (key != '\0') {
-        room_control_process_key(&room_system, key);
-      }
-      keypad_interrupt_pin = 0;
-    }
-
-    // DEMO: Keypad functionality - Remove when implementing room control logic
-    if (keypad_interrupt_pin != 0) {
-      char key = keypad_scan(&keypad, keypad_interrupt_pin);
-      if (key != '\0') {
-        write_to_oled(&key, White, 31, 31);
-        
         // TODO: TAREA - Descomentar para enviar teclas al sistema de control
-        // room_control_process_key(&room_system, key);
+        room_control_process_key(&room_system, key);
       }
       keypad_interrupt_pin = 0;
     }
@@ -240,15 +265,9 @@ int main(void)
     // command_parser_process(); // Procesar comandos de UART2 y UART3
     
     // TODO: TAREA - Leer sensor de temperatura y actualizar sistema
-  HAL_ADC_Start(&hadc1);
-  if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {
-    uint32_t adc_value = HAL_ADC_GetValue(&hadc1);
-  // Mapea el valor ADC (0-4095) a temperatura (20°C a 40°C)
-    float voltage = (adc_value * 3.3f) / 4095.0f;
-    float temperature = voltage * 100.0f; // 10mV/°C → 100°C/V
+    float temperature = read_temperature();
     room_control_set_temperature(&room_system, temperature);
-}
-HAL_ADC_Stop(&hadc1);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -501,6 +520,41 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
 
 }
 

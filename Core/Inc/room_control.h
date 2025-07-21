@@ -18,9 +18,9 @@ typedef enum {
 
 typedef enum {
     FAN_LEVEL_OFF = 0,    // 0% PWM
-    FAN_LEVEL_LOW = 30,   // 30% PWM  
-    FAN_LEVEL_MED = 70,   // 70% PWM
-    FAN_LEVEL_HIGH = 100  // 100% PWM
+    FAN_LEVEL_LOW = 1,   // 30% PWM  
+    FAN_LEVEL_MED = 2,   // 70% PWM
+    FAN_LEVEL_HIGH = 3  // 100% PWM
 } fan_level_t;
 
 typedef struct {
