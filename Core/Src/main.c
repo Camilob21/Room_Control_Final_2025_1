@@ -148,6 +148,7 @@ void heartbeat(void)
   }
 }
 
+
 // Escribe un mensaje en la pantalla OLED en una posición específica
 void write_to_oled(char *message, SSD1306_COLOR color, uint8_t x, uint8_t y)
 {
@@ -169,17 +170,27 @@ float read_temperature(void) {
             adc_sum += HAL_ADC_GetValue(&hadc1);
         }
         HAL_ADC_Stop(&hadc1);
-        HAL_Delay(2);// Pausa pequeña entre lecturas
+        
     }
 
     // Se convierte la lectura promedio a voltaje y luego a temperatura
     float adc_avg = adc_sum / (float)NUM_SAMPLES;
     float voltage = (adc_avg * 3.3f) / 4095.0f;
-
     // Inversión forzada
     float inverted_voltage = 0.5f - voltage; // Ajusta el offset según tu sensor
 
     return inverted_voltage * 100.0f;// LM35 da 10mV por °C → 1V = 100°C
+}
+
+void heartbeat_temp(void) {
+    static uint32_t last_read_time = 0;
+    uint32_t now = HAL_GetTick();
+
+    if (now - last_read_time >= 2000) { 
+        float temperature = read_temperature();
+        room_control_set_temperature(&room_system, temperature);
+        last_read_time = now;
+    }
 }
 
 /* USER CODE END 0 */
@@ -256,7 +267,7 @@ int main(void)
   while (1) {
     // Parpadea el LED si el sistema está bloqueado
     heartbeat(); // Call the heartbeat function to toggle the LED
-
+    heartbeat_temp(); // Call the function to read temperature periodically
     // TODO: TAREA - Descomentar cuando implementen la máquina de estados
     // Actualiza el sistema de control del cuarto (máquina de estados)
     room_control_update(&room_system);
@@ -287,8 +298,9 @@ int main(void)
     // command_parser_process(); // Procesar comandos de UART2 y UART3
     
     // TODO: TAREA - Leer sensor de temperatura y actualizar sistema
-    float temperature = read_temperature();
-    room_control_set_temperature(&room_system, temperature);// Actualiza la temperatura en la estructura del sistema
+
+    //float temperature = read_temperature();
+    //room_control_set_temperature(&room_system, temperature);// Actualiza la temperatura en la estructura del sistema
 
     /* USER CODE END WHILE */
 
