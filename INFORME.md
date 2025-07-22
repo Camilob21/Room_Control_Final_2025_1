@@ -205,7 +205,7 @@ void room_control_set_temperature(room_control_t *room, float temperature) {
 | 4    | Mostrar un * por cada dígito ingresado | Bucle con ssd1306_WriteString("*") | Reemplaza cada número ingresado por un asterisco en pantalla    |
 
 
-###Cambiar el estado del sistema y ejecutar acciones
+### Cambiar el estado del sistema y ejecutar acciones
 ```c
 // Cambia de estado y actualiza LED, mensajes, etc.
 static void room_control_change_state(room_control_t *room, room_state_t new_state) {
@@ -348,7 +348,7 @@ HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 | room_control_process_key(&room_system, key); | Procesa la tecla en el contexto del estado actual (ej. clave, comandos) |
 | keypad_interrupt_pin = 0;                    | Limpia el pin de interrupción para permitir nuevas entradas             |
 
-###Leer temperatura desde sensor LM35 con filtrado por promedio
+### Leer temperatura desde sensor LM35 con filtrado por promedio
 ```c
 // Función que lee el sensor LM35 conectado al ADC
 float read_temperature(void) {
@@ -385,7 +385,7 @@ float read_temperature(void) {
 | `inverted_voltage = 0.5f - voltage;`      | Invierte el voltaje para corregir la lógica del sensor si es necesario |
 | `return inverted_voltage * 100.0f;`       | Convierte el voltaje a temperatura (°C) según la escala del LM35       |
 
-##Control remoto via WIFI ESP_01
+## Control remoto via WIFI ESP_01
 **Comandos implementados:**
 - `GET_TEMP` → Devolver temperatura actual
 - `GET_STATUS` → Estado sistema (LOCKED/UNLOCKED, fan level)
