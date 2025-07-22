@@ -52,7 +52,6 @@ Este proyecto implementa un sistema embebido para el control de acceso y ventila
 ```c
 void room_control_update(room_control_t *room) {
     uint32_t current_time = HAL_GetTick();
-```
 
     switch (room->current_state) {
         case ROOM_STATE_LOCKED:
@@ -93,7 +92,7 @@ void room_control_update(room_control_t *room) {
         room_control_update_display(room);
         room->display_update_needed = false;
     }
-
+```
 
 
 | Elemento                        | Función                                   |
@@ -105,7 +104,7 @@ void room_control_update(room_control_t *room) {
 | room_control_update_display() | Actualiza interfaz visual (pantalla OLED) |
 
 ### Manejo de entrada de teclado en funcion del estado del sistema. (Interaccion con el dispositivo)
-c
+```c
 void room_control_process_key(room_control_t *room, char key) {
     room->last_input_time = HAL_GetTick();
 
@@ -146,6 +145,7 @@ void room_control_process_key(room_control_t *room, char key) {
 
     room->display_update_needed = true;
 }
+```
 
 | Estado Actual    | Acción con la tecla        | Resultado                             |
 | ---------------- | -------------------------- | ------------------------------------- |
@@ -156,7 +156,8 @@ void room_control_process_key(room_control_t *room, char key) {
 | Otro estado      | Cualquier tecla            | Se ignora                             |
 
 ### Actualizar la temperatura actual de la habitacion y ajustar el nivel del ventilador
-c
+
+```c
 void room_control_set_temperature(room_control_t *room, float temperature) {
     room->current_temperature = temperature;
     
@@ -170,6 +171,7 @@ void room_control_set_temperature(room_control_t *room, float temperature) {
     }
     room->display_update_needed = true;
 }
+```
 
 | Paso | Acción                                                 | Condición                              | Resultado                                                        |
 | ---- | ------------------------------------------------------ | -------------------------------------- | ---------------------------------------------------------------- |
@@ -179,8 +181,8 @@ void room_control_set_temperature(room_control_t *room, float temperature) {
 | 4    | Comparar con nivel actual y actualizar si es diferente | new_level != room->current_fan_level | Cambia el nivel del ventilador y marca actualización de pantalla |
 | 5    | Marcar actualización de pantalla                       | Siempre                                | room->display_update_needed = true                             |
 
-
-c
+### Ingresar Contraseña
+```c
         case ROOM_STATE_INPUT_PASSWORD:
             ssd1306_SetCursor(10, 10);
             ssd1306_WriteString("CLAVE:", Font_7x10, White);
@@ -190,6 +192,7 @@ c
                 ssd1306_WriteString("*", Font_7x10, White);
             }
             break;
+```
 
 
 | Paso | Acción                                   | Función utilizada                    | Resultado                                                       |
@@ -200,7 +203,7 @@ c
 | 4    | Mostrar un * por cada dígito ingresado | Bucle con ssd1306_WriteString("*") | Reemplaza cada número ingresado por un asterisco en pantalla    |
 
 ### Mostrar la contraseña en nuevo formato ()
-c
+```c
         case ROOM_STATE_INPUT_PASSWORD:
             ssd1306_SetCursor(10, 10);
             ssd1306_WriteString("CLAVE:", Font_7x10, White);
@@ -210,7 +213,7 @@ c
                 ssd1306_WriteString("*", Font_7x10, White);
             }
             break;
-
+```
 
 | Paso | Acción                                   | Función utilizada                    | Resultado                                                       |
 | ---- | ---------------------------------------- | ------------------------------------ | --------------------------------------------------------------- |
@@ -220,7 +223,7 @@ c
 | 4    | Mostrar un * por cada dígito ingresado | Bucle con ssd1306_WriteString("*") | Reemplaza cada número ingresado por un asterisco en pantalla    |
 
 ### Control automatico con PWM del ventilador en funcion de la temperatura.
-c
+```c
 static void room_control_update_fan(room_control_t *room) {
     // Control PWM del ventilador según el nivel
     uint32_t pwm_value = 0;
@@ -240,7 +243,7 @@ static void room_control_update_fan(room_control_t *room) {
     }
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pwm_value);
 }   
-
+```
 
 | Paso | Acción                             | Valor PWM Asignado           | Resultado                                                             |
 | ---- | ---------------------------------- | ---------------------------- | --------------------------------------------------------------------- |
@@ -255,20 +258,23 @@ static void room_control_update_fan(room_control_t *room) {
 
 ## main.c
 ### Inicializacion de funciones
-ADC1, pin analogico para el sensor, en este caso un potenciometro
-c
+
+ADC1, pin analogico para el sensor, en este caso un sensor analogico LM35
+```c
 static void MX_ADC1_Init(void);
+```
 
 Sistema de control de habitacion:
-c
+```c
 room_control_init(&room_system);
-
+```
 PWM, generar señal
-c
+```c
 HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+```
 
 ### Leer teclado y actualizar las maquina de estado:
-c
+```c
     room_control_update(&room_system);
         // Procesa teclas del keypad
     if (keypad_interrupt_pin != 0) {
@@ -278,7 +284,7 @@ c
       }
       keypad_interrupt_pin = 0;
     }
-
+```
 
 | Línea / Bloque de Código                       | Propósito                                                               |
 | ---------------------------------------------- | ----------------------------------------------------------------------- |
@@ -290,7 +296,7 @@ c
 | keypad_interrupt_pin = 0;                    | Limpia el pin de interrupción para permitir nuevas entradas             |
 
 ### Leer el sensor a traves de ADC y actualizar logica del sistema
-c
+```c
     HAL_ADC_Start(&hadc1);
     if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {
       uint32_t adc_value = HAL_ADC_GetValue(&hadc1);
@@ -299,7 +305,7 @@ c
       room_control_set_temperature(&room_system, temperature);
     }
     HAL_ADC_Stop(&hadc1);
-
+```
 | Línea de Código                                              | Acción                                                   |
 | ------------------------------------------------------------ | -------------------------------------------------------- |
 | HAL_ADC_Start(&hadc1);                                     | Inicia una conversión analógica a digital con el ADC1    |
