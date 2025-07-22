@@ -42,7 +42,8 @@ Este proyecto implementa un sistema embebido para el control de acceso y ventila
    - Verifica conexiones con los pines
    - Interactúa con el sistema desde el teclado
 4. *Funcionamineto General*
-   !(Mermaid Chart - Create complex, visual diagrams with text. A smarter way of creating diagrams.-2025-07-22-143654.png)
+   !![Diagrama](Diagrama de bloques.png)
+
 ---
 
 ## Decisiones de Diseño y Explicaciones de Código
