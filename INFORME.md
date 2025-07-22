@@ -41,7 +41,8 @@ Este proyecto implementa un sistema embebido para el control de acceso y ventila
    - Compila y flashea el código a la placa Nucleo 
    - Verifica conexiones con los pines
    - Interactúa con el sistema desde el teclado
-
+4. *Funcionamineto General*
+   
 ---
 
 ## Decisiones de Diseño y Explicaciones de Código
