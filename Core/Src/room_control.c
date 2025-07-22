@@ -332,10 +332,6 @@ static void room_control_update_fan(room_control_t *room) {
             HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
             return;
     }
-
-    snprintf(msg, sizeof(msg), "Set PWM: %lu\r\n", pwm_value);
-    HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pwm_value);
 }
 
