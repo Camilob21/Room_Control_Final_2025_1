@@ -49,10 +49,10 @@ Este proyecto implementa un sistema embebido para el control de acceso y ventila
 
 ### Sistema de control de estados
 
-'''
+```c
 void room_control_update(room_control_t *room) {
     uint32_t current_time = HAL_GetTick();
-'''
+```
 
     switch (room->current_state) {
         case ROOM_STATE_LOCKED:
@@ -93,7 +93,7 @@ void room_control_update(room_control_t *room) {
         room_control_update_display(room);
         room->display_update_needed = false;
     }
-}
+
 
 
 | Elemento                        | Función                                   |
