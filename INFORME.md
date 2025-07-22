@@ -42,7 +42,7 @@ Este proyecto implementa un sistema embebido para el control de acceso y ventila
    - Verifica conexiones con los pines
    - Interactúa con el sistema desde el teclado
 4. *Funcionamineto General*
-   ![Diagrama](Diagrama de bloques.png)
+   ![Diagrama](Diagrama.png)
 
 ---
 
