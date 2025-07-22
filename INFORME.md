@@ -362,7 +362,6 @@ float read_temperature(void) {
             adc_sum += HAL_ADC_GetValue(&hadc1);
         }
         HAL_ADC_Stop(&hadc1);
-        //HAL_Delay(2);// Pausa pequeña entre lecturas
     }
 
     // Se convierte la lectura promedio a voltaje y luego a temperatura
@@ -372,18 +371,40 @@ float read_temperature(void) {
     // Inversión forzada
     float inverted_voltage = 0.5f - voltage; // Ajusta el offset según tu sensor
 
-    return inverted_voltage * 100.0f;// LM35 da 10mV por °C → 1V = 100°C
+    return inverted_voltage * 100.0f; // LM35 da 10mV por °C → 1V = 100°C
 }
 ```
-| Línea de Código                           | Acción                                                                 |
-| ----------------------------------------- | ---------------------------------------------------------------------- |
-| `const int NUM_SAMPLES = 16;`             | Define la cantidad de muestras para suavizar la señal del ADC          |
-| `adc_sum += HAL_ADC_GetValue(&hadc1);`    | Suma el valor leído en cada iteración                                  |
-| `HAL_ADC_PollForConversion(..., 10)`      | Espera hasta 10 ms por cada conversión                                 |
-| `adc_avg = adc_sum / (float)NUM_SAMPLES;` | Calcula el promedio de las lecturas ADC                                |
-| `voltage = (adc_avg * 3.3f) / 4095.0f;`   | Convierte el valor ADC promedio a voltaje (0–3.3 V)                    |
-| `inverted_voltage = 0.5f - voltage;`      | Invierte el voltaje para corregir la lógica del sensor si es necesario |
-| `return inverted_voltage * 100.0f;`       | Convierte el voltaje a temperatura (°C) según la escala del LM35       |
+| Línea de Código                           | Acción                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------- |
+| `const int NUM_SAMPLES = 16;`             | Define cuántas muestras ADC se tomarán para filtrar el ruido      |
+| `adc_sum += HAL_ADC_GetValue(&hadc1);`    | Suma cada lectura ADC al acumulador total                         |
+| `HAL_ADC_PollForConversion(&hadc1, 10)`   | Espera hasta 10 ms por cada conversión del ADC                    |
+| `adc_avg = adc_sum / (float)NUM_SAMPLES;` | Calcula el promedio de las muestras ADC                           |
+| `voltage = (adc_avg * 3.3f) / 4095.0f;`   | Convierte el valor promedio a voltaje entre 0 y 3.3 V             |
+| `inverted_voltage = 0.5f - voltage;`      | Corrige el voltaje si el sensor está montado al revés o invertido |
+| `return inverted_voltage * 100.0f;`       | Convierte el voltaje en °C usando la escala 10 mV/°C del LM35     |
+
+```c
+// Llamado periódico para actualizar la temperatura cada 2 segundos
+void heartbeat_temp(void) {
+    static uint32_t last_read_time = 0;
+    uint32_t now = HAL_GetTick();
+
+    if (now - last_read_time >= 2000) { 
+        float temperature = read_temperature();
+        room_control_set_temperature(&room_system, temperature);
+        last_read_time = now;
+    }
+}
+```
+| Línea de Código                                            | Acción                                                                       |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `static uint32_t last_read_time = 0;`                      | Guarda el último momento en que se leyó la temperatura                       |
+| `uint32_t now = HAL_GetTick();`                            | Obtiene el tiempo actual en milisegundos desde que se inició el sistema      |
+| `if (now - last_read_time >= 2000)`                        | Verifica si han pasado al menos 2000 ms (2 segundos) desde la última lectura |
+| `float temperature = read_temperature();`                  | Llama la función para obtener la temperatura filtrada del LM35               |
+| `room_control_set_temperature(&room_system, temperature);` | Actualiza el valor en el sistema principal (`room_system`)                   |
+| `last_read_time = now;`                                    | Actualiza el tiempo de última lectura para la próxima ejecución              |
 
 ## Control remoto via WIFI ESP_01
 **Comandos implementados:**
